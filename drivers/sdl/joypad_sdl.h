@@ -30,8 +30,8 @@
 
 #pragma once
 
-#include "core/os/input.h"
 #include "core/os/thread.h"
+#include "main/input_default.h"
 
 typedef uint32_t SDL_JoystickID;
 typedef struct HWND__ *HWND;
@@ -62,7 +62,7 @@ private:
 
 	static JoypadSDL *singleton;
 
-	Joypad joypads[Input::JOYPADS_MAX];
+	Joypad joypads[InputDefault::JOYPADS_MAX];
 	HashMap<SDL_JoystickID, int> sdl_instance_id_to_joypad_id;
 
 	void close_joypad(int p_pad_idx);
