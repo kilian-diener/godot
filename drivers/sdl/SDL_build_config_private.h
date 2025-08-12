@@ -95,15 +95,11 @@
 #ifdef DBUS_ENABLED
 #define HAVE_DBUS_DBUS_H 1
 #define SDL_USE_LIBDBUS 1
-// SOWRAP_ENABLED is handled in thirdparty/sdl/core/linux/SDL_dbus.c
 #endif
 
 #ifdef UDEV_ENABLED
 #define HAVE_LIBUDEV_H 1
 #define SDL_USE_LIBUDEV
-#ifdef SOWRAP_ENABLED
-#define SDL_UDEV_DYNAMIC "libudev.so.1"
-#endif
 #endif
 
 #define SDL_LOADSO_DLOPEN 1

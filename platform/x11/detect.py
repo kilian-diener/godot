@@ -73,6 +73,7 @@ def get_opts():
         BoolVariable("use_tsan", "Use LLVM/GCC compiler thread sanitizer (TSAN))", False),
         BoolVariable("use_msan", "Use LLVM/GCC compiler memory sanitizer (MSAN))", False),
         BoolVariable("pulseaudio", "Detect and use PulseAudio", True),
+        BoolVariable("dbus", "Use D-Bus to handle screensaver and portal desktop settings", True),
         BoolVariable("speechd", "Detect and use Speech Dispatcher for Text-to-Speech support", True),
         BoolVariable("udev", "Use udev for gamepad connection callbacks", True),
         BoolVariable("debug_symbols", "Add debugging symbols to release/release_debug builds", True),
@@ -378,6 +379,14 @@ def configure(env):
         else:
             env["pulseaudio"] = False
             print("Warning: PulseAudio development libraries not found. Disabling the PulseAudio audio driver.")
+
+    if env["dbus"]:  # Threads auto enabled in 3.6?.
+        if os.system("pkg-config --exists dbus-1") == 0:  # 0 means found
+            env.ParseConfig("pkg-config dbus-1 --cflags --libs")
+            env.Append(CPPDEFINES=["DBUS_ENABLED"])
+        else:
+            print_warning("D-Bus development libraries not found. Disabling screensaver prevention.")
+            env["dbus"] = False
 
     if env["speechd"]:
         if os.system("pkg-config --exists speech-dispatcher") == 0:  # 0 means found
