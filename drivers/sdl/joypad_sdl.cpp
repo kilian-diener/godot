@@ -32,9 +32,9 @@
 
 #ifdef SDL_ENABLED
 
-#include "core/input/default_controller_mappings.h"
+#include "core/dictionary.h"
 #include "core/os/time.h"
-#include "core/variant/dictionary.h"
+#include "main/default_controller_mappings.h"
 
 #include <iterator>
 
@@ -61,13 +61,15 @@ JoypadSDL::JoypadSDL() {
 JoypadSDL::~JoypadSDL() {
 	// Process any remaining input events
 	process_events();
-	for (int i = 0; i < Input::JOYPADS_MAX; i++) {
+	for (int i = 0; i < InputDefault::JOYPADS_MAX; i++) {
 		if (joypads[i].attached) {
 			close_joypad(i);
 		}
 	}
 	SDL_Quit();
 	singleton = nullptr;
+
+	memdelete(input);
 }
 
 JoypadSDL *JoypadSDL::get_singleton() {
@@ -88,23 +90,25 @@ Error JoypadSDL::initialize() {
 		SDL_AddGamepadMappingsFromIO(rw, 1);
 	}
 
+	input = memnew(InputDefault);
+
 	print_verbose("SDL: Init OK!");
 	return OK;
 }
 
 void JoypadSDL::process_events() {
 	// Update rumble first for it to be applied when we handle SDL events
-	for (int i = 0; i < Input::JOYPADS_MAX; i++) {
+	for (int i = 0; i < InputDefault::JOYPADS_MAX; i++) {
 		Joypad &joy = joypads[i];
 		if (joy.attached && joy.supports_force_feedback) {
-			uint64_t timestamp = Input::get_singleton()->get_joy_vibration_timestamp(i);
+			uint64_t timestamp = input->get_joy_vibration_timestamp(i);
 
 			// Update the joypad rumble only if there was a new vibration request
 			if (timestamp > joy.ff_effect_timestamp) {
 				joy.ff_effect_timestamp = timestamp;
 
 				SDL_Joystick *sdl_joy = SDL_GetJoystickFromID(joypads[i].sdl_instance_idx);
-				Vector2 strength = Input::get_singleton()->get_joy_vibration_strength(i);
+				Vector2 strength = input->get_joy_vibration_strength(i);
 
 				// If the vibration was requested to start, SDL_RumbleJoystick will start it.
 				// If the vibration was requested to stop, strength and duration will be 0, so SDL will stop the rumble.
@@ -113,7 +117,7 @@ void JoypadSDL::process_events() {
 						// Rumble strength goes from 0 to 0xFFFF
 						strength.x * UINT16_MAX,
 						strength.y * UINT16_MAX,
-						Input::get_singleton()->get_joy_vibration_duration(i) * 1000);
+						input->get_joy_vibration_duration(i) * 1000);
 			}
 		}
 	}
@@ -122,7 +126,7 @@ void JoypadSDL::process_events() {
 	while (SDL_PollEvent(&sdl_event)) {
 		// A new joypad was attached
 		if (sdl_event.type == SDL_EVENT_JOYSTICK_ADDED) {
-			int joy_id = Input::get_singleton()->get_unused_joy_id();
+			int joy_id = input->get_unused_joy_id();
 			if (joy_id == -1) {
 				// There is no space for more joypads...
 				print_error("A new joypad was attached but couldn't allocate a new id for it because joypad limit was reached.");
@@ -162,18 +166,17 @@ void JoypadSDL::process_events() {
 				joypads[joy_id].supports_force_feedback = SDL_GetBooleanProperty(propertiesID, SDL_PROP_JOYSTICK_CAP_RUMBLE_BOOLEAN, false);
 				joypads[joy_id].guid = StringName(String(guid));
 
-				sdl_instance_id_to_joypad_id.insert(sdl_event.jdevice.which, joy_id);
+				sdl_instance_id_to_joypad_id.set(sdl_event.jdevice.which, joy_id);
 
 				// Skip Godot's mapping system because SDL already handles the joypad's mapping
 				Dictionary joypad_info;
 				joypad_info["mapping_handled"] = true;
 
-				Input::get_singleton()->joy_connection_changed(
+				input->joy_connection_changed(
 						joy_id,
 						true,
 						device_name,
-						joypads[joy_id].guid,
-						joypad_info);
+						joypads[joy_id].guid);
 			}
 			// An event for an attached joypad
 		} else if (sdl_event.type >= SDL_EVENT_JOYSTICK_AXIS_MOTION && sdl_event.type < SDL_EVENT_FINGER_DOWN && sdl_instance_id_to_joypad_id.has(sdl_event.jdevice.which)) {
@@ -181,16 +184,16 @@ void JoypadSDL::process_events() {
 
 			switch (sdl_event.type) {
 				case SDL_EVENT_JOYSTICK_REMOVED:
-					Input::get_singleton()->joy_connection_changed(joy_id, false, "");
+					input->joy_connection_changed(joy_id, false, "", "");
 					close_joypad(joy_id);
 					break;
 
 				case SDL_EVENT_JOYSTICK_AXIS_MOTION:
 					SKIP_EVENT_FOR_GAMEPAD;
 
-					Input::get_singleton()->joy_axis(
+					input->joy_axis(
 							joy_id,
-							static_cast<JoyAxis>(sdl_event.jaxis.axis), // Godot joy axis constants are already intentionally the same as SDL's
+							static_cast<JoystickList>(sdl_event.jaxis.axis), // Godot joy axis constants are already intentionally the same as SDL's
 							((sdl_event.jaxis.value - SDL_JOYSTICK_AXIS_MIN) / (float)(SDL_JOYSTICK_AXIS_MAX - SDL_JOYSTICK_AXIS_MIN) - 0.5f) * 2.0f);
 					break;
 
@@ -198,18 +201,18 @@ void JoypadSDL::process_events() {
 				case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
 					SKIP_EVENT_FOR_GAMEPAD;
 
-					Input::get_singleton()->joy_button(
+					input->joy_button(
 							joy_id,
-							static_cast<JoyButton>(sdl_event.jbutton.button), // Godot button constants are intentionally the same as SDL's, so we can just straight up use them
+							static_cast<JoystickList>(sdl_event.jbutton.button), // Godot button constants are intentionally the same as SDL's, so we can just straight up use them
 							sdl_event.jbutton.down);
 					break;
 
 				case SDL_EVENT_JOYSTICK_HAT_MOTION:
 					SKIP_EVENT_FOR_GAMEPAD;
 
-					Input::get_singleton()->joy_hat(
+					input->joy_hat(
 							joy_id,
-							(HatMask)sdl_event.jhat.value // Godot hat masks are identical to SDL hat masks, so we can just use them as-is.
+							(InputDefault::HatMask)sdl_event.jhat.value // Godot hat masks are identical to SDL hat masks, so we can just use them as-is.
 					);
 					break;
 
@@ -225,18 +228,18 @@ void JoypadSDL::process_events() {
 								((sdl_event.gaxis.value - SDL_JOYSTICK_AXIS_MIN) / (float)(SDL_JOYSTICK_AXIS_MAX - SDL_JOYSTICK_AXIS_MIN) - 0.5f) * 2.0f;
 					}
 
-					Input::get_singleton()->joy_axis(
+					input->joy_axis(
 							joy_id,
-							static_cast<JoyAxis>(sdl_event.gaxis.axis), // Godot joy axis constants are already intentionally the same as SDL's
+							static_cast<JoystickList>(sdl_event.gaxis.axis), // Godot joy axis constants are already intentionally the same as SDL's
 							axis_value);
 				} break;
 
 				// Do note SDL gamepads do not have separate events for the dpad
 				case SDL_EVENT_GAMEPAD_BUTTON_UP:
 				case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-					Input::get_singleton()->joy_button(
+					input->joy_button(
 							joy_id,
-							static_cast<JoyButton>(sdl_event.gbutton.button), // Godot button constants are intentionally the same as SDL's, so we can just straight up use them
+							static_cast<JoystickList>(sdl_event.gbutton.button), // Godot button constants are intentionally the same as SDL's, so we can just straight up use them
 							sdl_event.gbutton.down);
 					break;
 			}

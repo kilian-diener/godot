@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include "core/os/input.h"
 #include "core/os/thread.h"
 #include "main/input_default.h"
 
@@ -60,6 +61,7 @@ private:
 		uint64_t ff_effect_timestamp = 0;
 	};
 
+	InputDefault *input;
 	static JoypadSDL *singleton;
 
 	Joypad joypads[InputDefault::JOYPADS_MAX];
